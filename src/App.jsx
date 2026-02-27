@@ -296,10 +296,19 @@ function StatusBadge({ status }) {
 /* ─── InvoicePreview ────────────────────────────────────────────────────── */
 function InvoicePreview({ item }) {
   const [failed, setFailed] = useState(false);
-  if (!item) return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", color:"#1e2a3b" }}>
-      <div style={{ fontSize:36, marginBottom:8 }}>🔍</div>
-      <div style={{ fontSize:12, color:"#334155" }}>Preview appears here</div>
+
+  // Reset failed state when item changes
+  const prevUrlRef = useState(null);
+  if (prevUrlRef[0] !== (item?.previewUrl || null)) {
+    prevUrlRef[0] = item?.previewUrl || null;
+    if (failed) setFailed(false);
+  }
+
+  if (!item || !item.fileName) return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", color:"#1e2a3b", gap:8 }}>
+      <div style={{ fontSize:40 }}>🔍</div>
+      <div style={{ fontSize:12, color:"#2a3a4a", fontWeight:600 }}>Invoice Preview</div>
+      <div style={{ fontSize:10, color:"#1a2a36", textAlign:"center", maxWidth:180, lineHeight:1.6 }}>Select a file from the queue to preview it here</div>
     </div>
   );
   const isImage = item.fileType?.startsWith("image/");
@@ -500,7 +509,7 @@ export default function App() {
   const reviewing      = isSavedEdit ? editSavedData : reviewingQueue;
   const previewItem    = isSavedEdit
     ? { fileName: editSavedData?.fileName, fileType: null, previewUrl: null }
-    : reviewingQueue;
+    : reviewingQueue || null;
 
   /* File handling */
   const addFiles = useCallback(async rawFiles => {
@@ -618,11 +627,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3-col layout */}
-      <div style={{ display:"grid", gridTemplateColumns: reviewing ? "240px 1fr 320px" : "240px 1fr", height:"calc(100vh - 56px)", overflow:"hidden" }}>
+      {/* 3-col layout — flex so preview panel is always mounted */}
+      <div style={{ display:"flex", flexDirection:"row", height:"calc(100vh - 56px)", overflow:"hidden" }}>
 
         {/* Sidebar */}
-        <div style={{ borderRight:"1px solid #0d1520", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ width:240, flexShrink:0, borderRight:"1px solid #0d1520", display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
           {/* Upload zone */}
           <div onDrop={onDrop}
@@ -736,7 +745,7 @@ export default function App() {
         </div>
 
         {/* Center: Review Form */}
-        <div style={{ overflowY:"auto", padding:22 }}>
+        <div style={{ flex:1, minWidth:0, overflowY:"auto", padding:22 }}>
           {!reviewing ? (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", color:"#0d1a26", gap:10, textAlign:"center" }}>
               <div style={{ fontSize:52 }}>📋</div>
@@ -756,12 +765,10 @@ export default function App() {
           )}
         </div>
 
-        {/* Right: Preview */}
-        {reviewing && (
-          <div style={{ borderLeft:"1px solid #0d1520", overflow:"hidden", display:"flex", flexDirection:"column", animation:"fadeUp 0.25s ease", background:"#07090f" }}>
-            <InvoicePreview item={previewItem} />
-          </div>
-        )}
+        {/* Right: Preview — always mounted so no layout shift */}
+        <div style={{ width:320, flexShrink:0, borderLeft:"1px solid #0d1520", overflow:"hidden", display:"flex", flexDirection:"column", background:"#07090f" }}>
+          <InvoicePreview item={previewItem} />
+        </div>
       </div>
 
       {/* Saved Table */}
