@@ -494,6 +494,46 @@ function ReviewForm({ data, onChangeForm, onChangeLines, onSave, onDiscard, onAd
   );
 }
 
+
+/* ─── Debug Panel ──────────────────────────────────────────────────────────── */
+function DebugPanel({ queue, reviewIdx, saved, editSavedIdx, reviewing }) {
+  const [open, setOpen] = useState(false);
+
+  const log = {
+    reviewIdx,
+    editSavedIdx,
+    "reviewing?": reviewing ? `${reviewing.status} / ${reviewing.fileName}` : "null",
+    "queue": queue.map((q, i) => `[${i}] ${q.status} ${q.fileName}`),
+    "saved": saved.length,
+  };
+
+  return (
+    <div style={{ position:"fixed", bottom:12, right:12, zIndex:9999, fontFamily:"monospace", fontSize:11 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background:"#1a2436", border:"1px solid #334155", color:"#64748b", padding:"4px 10px", borderRadius:6, cursor:"pointer", fontSize:10 }}>
+        🐛 Debug {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div style={{ marginTop:4, background:"#060a13", border:"1px solid #1e2a3b", borderRadius:8, padding:"10px 14px", minWidth:280, maxHeight:300, overflowY:"auto", boxShadow:"0 4px 24px #000a" }}>
+          <div style={{ color:"#38bdf8", fontWeight:700, marginBottom:6, fontSize:10, letterSpacing:"0.08em" }}>APP STATE</div>
+          {Object.entries(log).map(([k, v]) => (
+            <div key={k} style={{ marginBottom:4 }}>
+              <span style={{ color:"#475569" }}>{k}: </span>
+              {Array.isArray(v)
+                ? v.map((item, i) => <div key={i} style={{ color:"#94a3b8", paddingLeft:12 }}>{item}</div>)
+                : <span style={{ color: v === "null" ? "#ef4444" : "#94a3b8" }}>{String(v)}</span>
+              }
+            </div>
+          ))}
+          <div style={{ marginTop:8, borderTop:"1px solid #1e2a3b", paddingTop:8, color:"#334155", fontSize:9 }}>
+            Open DevTools → Console for full logs
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── App ─────────────────────────────────────────────────────────────────── */
 export default function App() {
   const [queue,         setQueue]         = useState([]);
@@ -561,9 +601,11 @@ export default function App() {
       setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, status: "extracting" } : e));
       try {
         const { form, lineItems } = await extractInvoice(entry.file);
+        console.log("[addFiles] extraction done, entryIdx=", entryIdx, "reviewIdxRef=", reviewIdxRef.current);
         setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, status: "ready", form, lineItems } : e));
         // Auto-open this entry when done if nothing is selected yet
         if (reviewIdxRef.current === null) {
+          console.log("[addFiles] auto-selecting entryIdx=", entryIdx);
           setEditSavedIdx(null);
           setEditSavedData(null);
           setReviewIdx(entryIdx);
@@ -782,7 +824,7 @@ export default function App() {
               <div style={{ fontSize:15, fontWeight:800, color:"#1a2a3a" }}>Select a file to review</div>
               <div style={{ fontSize:12, maxWidth:260 }}>Upload invoices and click from the queue to review, or click a saved invoice to re-edit</div>
             </div>
-          ) : reviewing.status === "extracting" ? (
+          ) : (reviewing.status === "extracting" || reviewing.status === "pending") ? (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:14, textAlign:"center" }}>
               <div style={{ fontSize:36, animation:"shimmer 1.2s infinite" }}>⟳</div>
               <div style={{ fontSize:15, fontWeight:800, color:"#4a7499" }}>Extracting invoice data…</div>
@@ -853,6 +895,8 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Debug Panel — remove in production */}
+      <DebugPanel queue={queue} reviewIdx={reviewIdx} saved={saved} editSavedIdx={editSavedIdx} reviewing={reviewing} />
     </div>
   );
 }
