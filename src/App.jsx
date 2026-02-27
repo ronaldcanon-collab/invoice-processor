@@ -511,15 +511,24 @@ export default function App() {
     ? { fileName: editSavedData?.fileName, fileType: null, previewUrl: null }
     : reviewingQueue || null;
 
+  /* Keep a ref to queue so callbacks always see latest state without stale closures */
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+
+  /* Keep a ref to reviewIdx so we can check it inside async callbacks */
+  const reviewIdxRef = useRef(reviewIdx);
+  reviewIdxRef.current = reviewIdx;
+
   /* File handling */
   const addFiles = useCallback(async rawFiles => {
+    const currentQueue = queueRef.current;
     const allowed = Array.from(rawFiles).filter(f => {
       const t   = (f.type || "").toLowerCase();
       const ext = f.name.split(".").pop().toLowerCase();
       return t === "application/pdf" || t.startsWith("image/") ||
         ["pdf","png","jpg","jpeg","webp","gif","heic","heif"].includes(ext);
     });
-    const slots = MAX_FILES - queue.length;
+    const slots = MAX_FILES - currentQueue.length;
     if (slots <= 0) { alert(`Queue full — max ${MAX_FILES} files.`); return; }
     const toAdd = allowed.slice(0, slots);
     if (!toAdd.length) { alert("Please upload a PDF or image file (PNG, JPG, HEIC…)."); return; }
@@ -531,18 +540,39 @@ export default function App() {
       status: "pending", errorMsg: null,
       form: { ...EMPTY_FORM }, lineItems: [],
     }));
-    setQueue(prev => [...prev, ...entries]);
 
-    for (const entry of entries) {
+    // Add entries and auto-select the first one immediately so user sees the preview
+    setQueue(prev => {
+      const next = [...prev, ...entries];
+      return next;
+    });
+
+    // Auto-open the first uploaded file if nothing is currently selected
+    const firstIdx = currentQueue.length; // index of first new entry
+    if (reviewIdxRef.current === null) {
+      setEditSavedIdx(null);
+      setEditSavedData(null);
+      setReviewIdx(firstIdx);
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const entryIdx = currentQueue.length + i;
       setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, status: "extracting" } : e));
       try {
         const { form, lineItems } = await extractInvoice(entry.file);
         setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, status: "ready", form, lineItems } : e));
+        // Auto-open this entry when done if nothing is selected yet
+        if (reviewIdxRef.current === null) {
+          setEditSavedIdx(null);
+          setEditSavedData(null);
+          setReviewIdx(entryIdx);
+        }
       } catch (err) {
         setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, status: "error", errorMsg: err.message } : e));
       }
     }
-  }, [queue.length]);
+  }, []); // no deps — uses refs to avoid stale closures
 
   const onDrop = useCallback(e => {
     e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files);
@@ -671,11 +701,11 @@ export default function App() {
             )}
             {queue.map((item, idx) => (
               <div key={item.id} className="qpill"
-                onClick={() => { if (item.status !== "saved") { setEditSavedIdx(null); setEditSavedData(null); setReviewIdx(idx); } }}
+                onClick={() => { setEditSavedIdx(null); setEditSavedData(null); setReviewIdx(idx); }}
                 style={{ padding:"9px 10px", borderRadius:9, marginBottom:5,
                   border:`1px solid ${reviewIdx === idx && !isSavedEdit ? "#38bdf8" : "#0d1520"}`,
                   background: reviewIdx === idx && !isSavedEdit ? "#0a1828" : "#080d17",
-                  cursor: item.status === "saved" ? "default" : "pointer",
+                  cursor: "pointer",
                   transition:"all 0.18s", opacity: item.status === "saved" ? 0.4 : 1,
                   position:"relative" }}>
                 {reviewIdx === idx && !isSavedEdit && (
@@ -751,6 +781,13 @@ export default function App() {
               <div style={{ fontSize:52 }}>📋</div>
               <div style={{ fontSize:15, fontWeight:800, color:"#1a2a3a" }}>Select a file to review</div>
               <div style={{ fontSize:12, maxWidth:260 }}>Upload invoices and click from the queue to review, or click a saved invoice to re-edit</div>
+            </div>
+          ) : reviewing.status === "extracting" ? (
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:14, textAlign:"center" }}>
+              <div style={{ fontSize:36, animation:"shimmer 1.2s infinite" }}>⟳</div>
+              <div style={{ fontSize:15, fontWeight:800, color:"#4a7499" }}>Extracting invoice data…</div>
+              <div style={{ fontSize:12, color:"#334155", maxWidth:260 }}>AI is reading the invoice. Fields will populate automatically when done.</div>
+              <div style={{ fontSize:11, color:"#1e2a3b" }}>{reviewing.fileName}</div>
             </div>
           ) : (
             <ReviewForm
